@@ -5,26 +5,40 @@ import com.coindcx.tradingapp.model.OrderPayload;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import lombok.extern.slf4j.Slf4j;
-
+import java.io.IOException;
 import javax.websocket.*;
+
+import org.springframework.stereotype.Component;
+
 import java.net.URI;
 
 @Slf4j
 @ClientEndpoint
+@Component
 public class CoinDCXWebSocketClient {
-
-    private static final String COINDCX_WEBSOCKET_URL = "wss://ws.coindcx.com"; // Replace with actual URL
 
     private Session session;
 
     public CoinDCXWebSocketClient() {
+        // Default constructor
+    }
+
+    public void connect(String uri) {
         try {
+            log.info("Attempting to connect to WebSocket at URI: {}", uri);
             WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-            container.connectToServer(this, new URI(COINDCX_WEBSOCKET_URL));
+            container.connectToServer(this, new URI(uri));
+            log.info("Connected to WebSocket: {}", uri);
+        } catch (DeploymentException e) {
+            log.error("Deployment error: {}", e.getMessage());
+        } catch (IOException e) {
+            log.error("IO error: {}", e.getMessage());
         } catch (Exception e) {
             log.error("Error connecting to WebSocket: {}", e.getMessage());
+            e.printStackTrace(); // Print the full stack trace for debugging
         }
     }
+    
 
     @OnOpen
     public void onOpen(Session session) {

@@ -10,7 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class TradingAppApplication implements CommandLineRunner {
 
     @Autowired
-    private WebSocketClient webSocketClient;
+    private CoinDCXWebSocketClient webSocketClient;
 
     @Autowired
     private TradingUI tradingUI;
@@ -21,9 +21,14 @@ public class TradingAppApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        String wsUrl = "wss://stream.coindcx.com/some-endpoint"; // Replace with actual URL
-        webSocketClient.connect(wsUrl);
-
-        tradingUI.start(); // Start the UI for user input
+        String wsUrl = "wss://ws.coindcx.com/";
+        try {
+            webSocketClient.connect(wsUrl); // Call the connect method
+            tradingUI.start(); // Start the UI for user input
+        } catch (Exception e) {
+            System.err.println("Failed to connect to WebSocket: " + e.getMessage());
+        }
     }
 }
+
+
