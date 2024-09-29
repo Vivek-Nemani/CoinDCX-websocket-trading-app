@@ -1,5 +1,8 @@
 package com.coindcx.tradingapp;
-
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.coindcx.tradingapp.ui.TradingUI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
@@ -21,14 +24,9 @@ public class TradingAppApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        String wsUrl = "wss://ws.coindcx.com/";
-        try {
-            webSocketClient.connect(wsUrl); // Call the connect method
-            tradingUI.start(); // Start the UI for user input
-        } catch (Exception e) {
-            System.err.println("Failed to connect to WebSocket: " + e.getMessage());
-        }
+        String wsUrl = "wss://ws.coindcx.com/"; // WebSocket URL from CoinDCX docs
+        webSocketClient.connect(wsUrl); // Connect to WebSocket
+
+        tradingUI.start(); // Start the UI for user interaction
     }
 }
-
-

@@ -1,116 +1,113 @@
 package com.coindcx.tradingapp;
-
-import com.coindcx.tradingapp.model.MarketData;
-import com.coindcx.tradingapp.model.OrderPayload;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import lombok.extern.slf4j.Slf4j;
-import java.io.IOException;
-import javax.websocket.*;
-
+import org.json.JSONObject;
 import org.springframework.stereotype.Component;
-
-import java.net.URI;
+import com.google.gson.Gson;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.*;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okhttp3.Response;
+import okio.ByteString; 
+import java.util.concurrent.TimeUnit;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
-@ClientEndpoint
 @Component
 public class CoinDCXWebSocketClient {
 
-    private Session session;
+    private static final String API_KEY = "efe25d49807545bd7c614abc568a58f656e73efe2fe93c67";
+    private static final String WS_URL = "wss://ws.coindcx.com/";
+
+    private OkHttpClient client;
+    private WebSocket webSocket;
 
     public CoinDCXWebSocketClient() {
-        // Default constructor
+        client = new OkHttpClient.Builder()
+                .pingInterval(30, TimeUnit.SECONDS)
+                .build();
     }
 
-    public void connect(String uri) {
+    // Method to start WebSocket connection
+    public void connect() {
+        Request request = new Request.Builder()
+                .url(WS_URL)
+                .addHeader("Authorization", API_KEY)  // Add your API key to headers
+                .build();
+
+        webSocket = client.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                System.out.println("WebSocket Connected");
+                subscribeToMarketData(webSocket);
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                System.out.println("Received message: " + text);
+                handleMarketData(text);
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, ByteString bytes) {
+                System.out.println("Received ByteString message: " + bytes.hex());
+            }
+
+            @Override
+            public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                System.out.println("WebSocket connection failed: " + t.getMessage());
+            }
+
+            @Override
+            public void onClosing(WebSocket webSocket, int code, String reason) {
+                System.out.println("Closing WebSocket: " + reason);
+                webSocket.close(1000, null);
+            }
+
+            @Override
+            public void onClosed(WebSocket webSocket, int code, String reason) {
+                System.out.println("WebSocket Closed: " + reason);
+            }
+        });
+    }
+
+    // Send subscription request to CoinDCX WebSocket
+    private void subscribeToMarketData(WebSocket webSocket) {
+        JSONObject subscribeMessage = new JSONObject();
+        subscribeMessage.put("id", 1);
+        subscribeMessage.put("method", "subscribe");
+        subscribeMessage.put("params", new JSONObject()
+                .put("channels", new String[]{"market.BTC_USDT"}));  // Example market data
+
+        webSocket.send(subscribeMessage.toString());
+        System.out.println("Sent subscription request: " + subscribeMessage.toString());
+    }
+
+    // Handle the incoming market data from WebSocket
+    private void handleMarketData(String message) {
         try {
-            log.info("Attempting to connect to WebSocket at URI: {}", uri);
-            WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-            container.connectToServer(this, new URI(uri));
-            log.info("Connected to WebSocket: {}", uri);
-        } catch (DeploymentException e) {
-            log.error("Deployment error: {}", e.getMessage());
-        } catch (IOException e) {
-            log.error("IO error: {}", e.getMessage());
+            JSONObject jsonObject = new JSONObject(message);
+            if (jsonObject.has("params")) {
+                JSONObject params = jsonObject.getJSONObject("params");
+                System.out.println("Market Data: " + params.toString());
+
+                // Check trigger price logic or further processing...
+            }
         } catch (Exception e) {
-            log.error("Error connecting to WebSocket: {}", e.getMessage());
-            e.printStackTrace(); // Print the full stack trace for debugging
-        }
-    }
-    
-
-    @OnOpen
-    public void onOpen(Session session) {
-        this.session = session;
-        log.info("WebSocket connection opened.");
-        // Subscribe to market data for a specific currency pair
-        String subscribeMessage = "{\"id\": 1, \"method\": \"subscribed\", \"params\": {\"channels\": [\"ticker.BTC_USDT\"]}}";
-        sendMessage(subscribeMessage);
-    }
-
-    @OnMessage
-    public void onMessage(String message) {
-        log.info("Received message: {}", message);
-        MarketData marketData = parseMarketData(message);
-        if (marketData != null) {
-            // Display or process the market data
-            log.info("Market Data: {}", marketData);
-            // Check if conditions are met for buying/selling
-            checkTriggerPrice(marketData);
+            e.printStackTrace();
+            System.out.println("Error parsing market data.");
         }
     }
 
-    @OnClose
-    public void onClose(Session session, CloseReason closeReason) {
-        log.info("WebSocket connection closed: {}", closeReason);
-    }
-
-    @OnError
-    public void onError(Session session, Throwable throwable) {
-        log.error("WebSocket error: {}", throwable.getMessage());
-    }
-
-    private void sendMessage(String message) {
-        try {
-            session.getBasicRemote().sendText(message);
-        } catch (Exception e) {
-            log.error("Error sending message: {}", e.getMessage());
-        }
-    }
-
-    private MarketData parseMarketData(String message) {
-        try {
-            JsonObject jsonObject = JsonParser.parseString(message).getAsJsonObject();
-            JsonObject params = jsonObject.getAsJsonObject("params");
-
-            MarketData marketData = new MarketData();
-            marketData.setCurrencyPair(params.get("currency_pair").getAsString());
-            marketData.setLastPrice(params.get("last_price").getAsDouble());
-            marketData.setHighPrice(params.get("high_price").getAsDouble());
-            marketData.setLowPrice(params.get("low_price").getAsDouble());
-            marketData.setVolume(params.get("volume").getAsDouble());
-
-            return marketData;
-        } catch (Exception e) {
-            log.error("Error parsing market data: {}", e.getMessage());
-            return null; // Return null if parsing fails
-        }
-    }
-
-    private void checkTriggerPrice(MarketData marketData) {
-        // Example trigger price and order amount (replace these with user inputs)
-        double triggerPrice = 30000; // This should be dynamic based on user input
-        double orderAmount = 0.01;    // Example amount to buy/sell
-
-        if (marketData.getLastPrice() <= triggerPrice) {
-            OrderPayload buyOrder = new OrderPayload("placeOrder", marketData.getCurrencyPair(), marketData.getLastPrice(), orderAmount, "buy");
-            log.info("Prepared Buy Order: {}", buyOrder);
-            // Optionally send the buy order to the API
-        } else if (marketData.getLastPrice() >= triggerPrice) {
-            OrderPayload sellOrder = new OrderPayload("placeOrder", marketData.getCurrencyPair(), marketData.getLastPrice(), orderAmount, "sell");
-            log.info("Prepared Sell Order: {}", sellOrder);
-            // Optionally send the sell order to the API
+    public void close() {
+        if (webSocket != null) {
+            webSocket.close(1000, "Closing WebSocket");
         }
     }
 }
